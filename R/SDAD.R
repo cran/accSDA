@@ -18,12 +18,18 @@
 #' @param PGtol Two stopping tolerances for inner ADMM method, first is absolute tolerance, second is relative.
 #' @param maxits Number of iterations to run
 #' @param tol Stopping tolerance for proximal gradient algorithm.
+#' @param selector Vector to choose which parameters in the discriminant vector will be used to calculate the
+#'                 regularization terms. The size of the vector must be *p* the number of predictors. The
+#'                 default value is a vector of all ones. This is currently only used for ordinal classification.
+#' @param initTheta Initial first theta, default value is a vector of ones.
 #' @return \code{SDAD} returns an object of \code{\link{class}} "\code{SDAD}" including a list
 #' with the following named components: (More will be added later to handle the predict function)
 #' \describe{
 #'   \item{\code{call}}{The matched call.}
 #'   \item{\code{B}}{p by q matrix of discriminant vectors.}
 #'   \item{\code{Q}}{K by q matrix of scoring vectors.}
+#'   \item{\code{subits}}{Total number of iterations in proximal gradient subroutine.}
+#'   \item{\code{totalits}}{Number coordinate descent iterations for all discriminant vectors}
 #' }
 #' @seealso \code{SDADcv}, \code{\link{SDAAP}} and \code{\link{SDAP}}
 #' @keywords internal
@@ -33,7 +39,7 @@ SDAD <- function (x, ...) UseMethod("SDAD")
 #'
 #' @rdname SDAD
 #' @method SDAD default
-SDAD.default <- function(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, tol){
+SDAD.default <- function(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, tol, selector = rep(1,dim(Xt)[2]), initTheta){
   # TODO: Handle Yt as a factor and generate dummy matrix from it
 
   ###
@@ -44,23 +50,27 @@ SDAD.default <- function(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, to
   p <- dim(Xt)[2]  # num. features
   K <- dim(Yt)[2]  # num. classes
 
+  # Logging variables
+  subits <- 0
+  totalits <- rep(maxits,q)
+
   # Check if Om is diagonal. If so, use matrix inversion lemma in linear
   # system solves.
-  if(norm(diag(diag(Om))-Om,type = "F") < 1e-15){
+  if(norm(diag(diag(Om))-Om,type = "F") < 1e-15 & sum(selector) == length(selector)){
     # Flag to use Sherman-Morrison-Woodbury to translate to
     # smaller dimensional linear system solves.
     SMW <- 1
 
     # Easy to invert diagonal part of Elastic net coefficient matrix.
-    M <- mu*diag(p) + 2*gam*Om
-    Minv = 1/diag(M)
+    M <- mu + 2*gam*diag(Om)
+    Minv = 1/M
 
     # Cholesky factorization for smaller linear system.
-    RS = chol(diag(nt) + 2*Xt%*%diag(Minv)%*%t(Xt)/nt);
+    RS = chol(diag(nt) + 2*Xt%*%((Minv/nt)*t(Xt)));
   } else{ # Use Cholesky for solving linear systems in ADMM step
     # Flag to not use SMW
     SMW <- 0
-    A <- mu*diag(p) + 2*(crossprod(Xt) + gam*Om)
+    A <- mu*diag(p) + 2*(crossprod(Xt)/nt + gam*Om)
     R2 <- chol(A)
   }
 
@@ -91,21 +101,24 @@ SDAD.default <- function(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, to
     }
 
     # Initialize theta
-    theta <- Mj(matrix(stats::runif(K),nrow=K,ncol=1))
-    theta <- theta/as.numeric(sqrt(crossprod(theta, D)%*%theta))
+    theta <- matrix(stats::runif(K),nrow=K,ncol=1)
+    theta <- Mj(theta)
+    if(j == 1 & !missing(initTheta)){
+      theta=initTheta
+    }
+    theta <- theta/as.numeric(sqrt(crossprod(theta,D%*%theta)))
 
     # Initialize coefficient vector for elastic net step
-    d <- 2*crossprod(Xt,Yt%*%theta)
+    d <- 2*crossprod(Xt,Yt%*%(theta/nt))
 
     # Initialize beta
     if(SMW == 1){
       btmp <- Xt%*%(Minv*d)/nt
-      #beta <- (Minv*d) - 2*Minv*(crossprod(Xt,solve(RS,solve(t(RS),btmp))))
       beta <- (Minv*d) - 2*Minv*(crossprod(Xt,backsolve(RS,forwardsolve(t(RS),btmp))))
     }else{
-      #beta <- solve(R2,solve(t(R2),d))
       beta <- backsolve(R2,forwardsolve(t(R2),d))
     }
+
 
     #+++++++++++++++++++++++++++++++++++++++++++++++++++++
     # Alternating direction method to update (theta, beta)
@@ -116,19 +129,17 @@ SDAD.default <- function(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, to
 
       if(SMW == 1){
         # Use SMW-based ADMM
-        betaOb <- ADMM_EN_SMW(Minv, Xt, RS, d, beta, lam, mu, PGsteps, PGtol, TRUE)
+        betaOb <- ADMM_EN_SMW(Minv, Xt, RS, d, beta, lam, mu, PGsteps, PGtol, TRUE, selector)
         beta <- betaOb$y
       } else{
-        betaOb <- ADMM_EN2(R2, d, beta, lam, mu, PGsteps, PGtol, TRUE)
+        betaOb <- ADMM_EN2(R2, d, beta, lam, mu, PGsteps, PGtol, TRUE, selector)
         beta <- betaOb$y
       }
-
+      subits <- subits + betaOb$k
       # Update theta using the projected solution
       if(norm(beta, type="2") > 1e-15){
         # Update theta
         b <- crossprod(Yt, Xt%*%beta)
-        #y <- solve(t(R),b)
-        #z <- solve(R,y)
         y <- forwardsolve(t(R),b)
         z <- backsolve(R,y)
         tt <- Mj(z)
@@ -148,19 +159,29 @@ SDAD.default <- function(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, to
 
       if(max(db,dt) < tol){
         # Converged
+        totalits[j] <- its
         break
       }
 
+    }
+    # Make the first argument be positive, this is to make the results
+    # more reproducible and consistent.
+    if(theta[1] < 0){
+      theta <- (-1)*theta
+      beta <- (-1)*beta
     }
     # Update Q and B
     Q[,j] <- theta
     B[,j] <- beta
   }
+  totalits <- sum(totalits)
   #Return B and Q in a SDAAP object
   retOb <- structure(
     list(call = match.call(),
          B = B,
-         Q = Q),
+         Q = Q,
+         subits = subits,
+         totalits = totalits),
     class = "SDAD")
   return(retOb)
 }

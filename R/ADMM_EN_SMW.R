@@ -14,6 +14,9 @@
 #' @param maxits Number of iterations to run
 #' @param tol Vector of stopping tolerances, first value is absolute, second is relative tolerance.
 #' @param quiet Logical controlling display of intermediate statistics.
+#' @param selector Vector to choose which parameters in the discriminant vector will be used to calculate the
+#'                 regularization terms. The size of the vector must be *p* the number of predictors. The
+#'                 default value is a vector of all ones. This is currently only used for ordinal classification.
 #' @return \code{ADMM_EN_SMW} returns an object of \code{\link{class}} "\code{ADMM_EN_SMW}" including a list
 #' with the following named components
 #'
@@ -29,7 +32,7 @@
 #' This function is used by other functions and should only be called explicitly for
 #' debugging purposes.
 #' @keywords internal
-ADMM_EN_SMW <- function(Ainv, V,R, d, x0, lam, mu, maxits, tol, quiet){
+ADMM_EN_SMW <- function(Ainv, V,R, d, x0, lam, mu, maxits, tol, quiet, selector){
   ###
   # Initialization
   ###
@@ -63,7 +66,8 @@ ADMM_EN_SMW <- function(Ainv, V,R, d, x0, lam, mu, maxits, tol, quiet){
     # Update y using soft-thresholding.
     yold <- y
     tmp <- x + z/mu
-    y <- sign(tmp)*pmax(abs(tmp) - lam*matrix(1,p,1),matrix(0,p,1))
+    yy <- sign(tmp)*pmax(abs(tmp) - (lam/mu)*matrix(1,p,1),matrix(0,p,1))
+    y <-  selector*yy + abs(selector-1)*(tmp)
 
     #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     # Update z.

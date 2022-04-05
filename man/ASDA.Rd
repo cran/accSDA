@@ -7,8 +7,17 @@
 \usage{
 ASDA(Xt, ...)
 
-\method{ASDA}{default}(Xt, Yt, Om = diag(p), gam = 0.001, lam = 1e-06,
-  q = K - 1, method = "SDAAP", control = list(), ...)
+\method{ASDA}{default}(
+  Xt,
+  Yt,
+  Om = diag(p),
+  gam = 0.001,
+  lam = 1e-06,
+  q = K - 1,
+  method = "SDAAP",
+  control = list(),
+  ...
+)
 }
 \arguments{
 \item{Xt}{n by p data matrix, (can also be a data.frame that can be coerced to a matrix)}
@@ -36,7 +45,9 @@ It is specified as a character vector which can be one of the three values
   \item{\code{SDAP}}{Proximal gradient algorithm.}
   \item{\code{SDAAP}}{Accelerated proximal gradient algorithm.}
   \item{\code{SDAD}}{Alternating directions method of multipliers algorithm.}
-}}
+}
+Note that further parameters are passed to the function in the argument \code{control},
+which is a list with named components.}
 
 \item{control}{List of control arguments. See Details.}
 }
@@ -92,6 +103,16 @@ The control list contains the following entries to further tune the
            if CV is not specified. Default value is 0.15.}
            \item{\code{quiet}}{Set to \code{FALSE} if status updates are supposed to be printed to the R console.
            Default value is \code{TRUE}. Note that this triggers a lot of printing to the console.}
+           \item{\code{ordinal}}{Set to \code{TRUE} if the labels are ordinal. Only available for methods
+           \code{SDAAP} and \code{SDAD}.}
+           \item{\code{initTheta}}{Option to set the initial theta vector, by default it is a vector of all ones
+           for the first theta.}
+           \item{\code{bt}}{Logical indicating whether backtracking should be used, only applies to
+           the Proximal Gradient based methods. By default, backtracking is not used.}
+           \item{\code{L}}{Initial estimate for Lipshitz constant used for backtracking. Default value is 0.25.}
+           \item{\code{eta}}{Scalar for Lipshitz constant. Default value is 1.25.}
+           \item{\code{rankRed}}{Boolean indicating whether Om is factorized, such that R^t*R=Om,
+           currently only applicable for accelerated proximal gradient.}
          }
 }
 \note{
@@ -113,8 +134,8 @@ The input matrix Xt should be normalized, i.e. each column corresponding to
 
     # Define parameters for Alternating Direction Method of Multipliers (SDAD)
     Om <- diag(4)+0.1*matrix(1,4,4) #elNet coef mat
-    gam <- 0.01
-    lam <- 0.01
+    gam <- 0.0001
+    lam <- 0.0001
     method <- "SDAD"
     q <- 2
     control <- list(PGsteps = 100,

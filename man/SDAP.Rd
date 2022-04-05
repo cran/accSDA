@@ -7,7 +7,22 @@
 \usage{
 SDAP(x, ...)
 
-\method{SDAP}{default}(Xt, Yt, Om, gam, lam, q, PGsteps, PGtol, maxits, tol)
+\method{SDAP}{default}(
+  Xt,
+  Yt,
+  Om,
+  gam,
+  lam,
+  q,
+  PGsteps,
+  PGtol,
+  maxits,
+  tol,
+  initTheta,
+  bt = FALSE,
+  L,
+  eta
+)
 }
 \arguments{
 \item{Xt}{n by p data matrix, (not a data frame, but a matrix)}
@@ -32,6 +47,14 @@ only one element is 1 and the rest is 0.}
 \item{maxits}{Number of iterations to run}
 
 \item{tol}{Stopping tolerance for proximal gradient algorithm.}
+
+\item{initTheta}{Initial first theta, default value is a vector of ones.}
+
+\item{bt}{Boolean to indicate whether backtracking should be used, default false.}
+
+\item{L}{Initial estimate for Lipshitz constant used for backtracking.}
+
+\item{eta}{Scalar for Lipshitz constant.}
 }
 \value{
 \code{SDAP} returns an object of \code{\link{class}} "\code{SDAP}" including a list
@@ -41,6 +64,8 @@ with the following named components: (More will be added later to handle the pre
   \item{\code{call}}{The matched call.}
   \item{\code{B}}{p by q matrix of discriminant vectors.}
   \item{\code{Q}}{K by q matrix of scoring vectors.}
+  \item{\code{subits}}{Total number of iterations in proximal gradient subroutine.}
+  \item{\code{totalits}}{Number coordinate descent iterations for all discriminant vectors}
 }
 
 \code{NULL}

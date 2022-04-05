@@ -1,12 +1,9 @@
-
-![alt tag](https://travis-ci.org/gumeo/accSDA.svg?branch=master)
-
 # accSDA
 ## Accelerated Sparse Discriminant Analysis
 
 This is the `R`-package accompanying the paper [Proximal Methods for Sparse Optimal Scoring and Discriminant Analysis](https://arxiv.org/pdf/1705.07194.pdf).
 
-This package is currently under development, although most of the functionality is there already! You can now do sparse discriminant analysis with the package, but the visualization tools are being implemented and tested.
+This package is under continuous development and most of the basic functionality is available! You can now apply sparse discriminant analysis with `accSDA`, see the tutorials below to get started.
 
 # Why should you use this package?
 
@@ -20,19 +17,23 @@ This package includes functions that allow you to train such a classifier in a s
 
 You can install the package from CRAN or for the development version, you can install directly from github.
 
-To install packages from github you need the `devtools` package. So install that if you haven't gotten it already!
-
-Now you can proceed to install the package:
+To install directly from CRAN simply type the following into your R console:
 ```R
-library(devtools)
-install_github("gumeo/accSDA")
-library(accSDA)
+install.packages("accSDA")
 ```
-And now you can start playing around with the package!
+This should be enough for most users!
+
+You can also install the development version of the package from github:
+```R
+if (!"devtools" %in% installed.packages()[,1]) {
+    install.packages("devtools")
+}
+devtools::install_github("gumeo/accSDA")
+```
 
 # Iris tutorial
 
-The following is an example on how one could use the package on Fisher's Iris dataset. I choose the Iris dataset because most people are familiar with it. Other examples with *p>>n* examples will arive later!
+The following is a simple example on how one could use the package on Fisher's Iris dataset. I choose the Iris dataset because most people are familiar with it. Check also the *p>>n* example below!
 
 ```R
 # Prepare training and test set
@@ -80,6 +81,81 @@ Now that you have gotten some results, you want to test the performance on the t
 
 ```R
 preds <- predict(res, newdata = Xtest)
+```
+
+# A larger example
+
+The Iris data is not very convincing, so let's take a look at a simulated example that is more relevant w.r.t. sparsity.
+
+The goal here is to demonstrate how we setup the data, how we normalize, train, predict, plot projected data and assess accuracy.
+
+Try running the following code in an R-session with `accSDA` loaded.
+
+```R
+# You can play around with these parameters
+P <- 300 # Number of variables
+N <- 100 # Number of samples per class
+K <- 5 # Number of classes
+
+# Mean for classes, they are zero everywhere except that coordinate i has
+# value 3 for class i, each column of the means matrix represents a mean
+# for a specific class.
+means <- matrix(0,nrow=P,ncol=K)
+for(i in 1:K){
+  means[i,i] <- 5
+}
+
+
+# Sample dummy data
+Xtrain <- matrix(0,nrow=0,ncol=P)
+Xtest <- matrix(0,nrow=0,ncol=P)
+for(i in 1:K){
+  Xtrain <- rbind(Xtrain,MASS::mvrnorm(n=N,mu = means[,i], Sigma = diag(P)))
+  Xtest <- rbind(Xtest,MASS::mvrnorm(n=N,mu = means[,i], Sigma = diag(P)))
+}
+
+# Generate the labels
+Ytrain <- factor(rep(1:K,each=N))
+Ytest <- Ytrain
+
+# Normalize the data
+Xt <- accSDA::normalize(Xtrain)
+Xtrain <- Xt$Xc # Use the centered and scaled data
+Xtest <- accSDA::normalizetest(Xtest,Xt)
+
+# Train the classifier and increase the sparsity parameter from the default
+# so we penalize more for non-sparse solutions.
+res <- accSDA::ASDA(Xtrain,Ytrain,lam=0.01)
+
+# Plot the projected training data, it is projected to the first
+# 2-dimensions, this is possible because the number of discriminant
+# vectors is the number of classes minus 1. So for a binary
+# Classification task, we project to one dimension, and can't produce
+# a plot like this. 
+XtrainProjected <- Xtrain%*%res$beta
+
+# Plot using the first two discriminant directions
+plot(XtrainProjected[,1],XtrainProjected[,2],col=Ytrain,
+     main='Training data projected with discriminant vectors')
+```
+![Picture of plot above](./inst/pic1.png)
+```R
+
+# Predict on the test data
+preds <- predict(res, newdata = Xtest)
+
+# Plot projected test data with predicted and correct labels
+XtestProjected <- Xtest%*%res$beta
+
+plot(XtestProjected[,1],XtestProjected[,2],col=Ytest,
+     main="Projected test data with original labels")
+plot(XtestProjected[,1],XtestProjected[,2],col=preds$class,
+     main="Projected test data with predicted labels")
+
+# Calculate accuracy
+sum(preds$class == Ytest)/(K*N) # We have N samples per class, so total K*N
+
+# Inspect the res$beta vector to see that the discriminant vector is sparse
 ```
 
 # Future plans

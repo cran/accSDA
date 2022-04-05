@@ -1,6 +1,6 @@
 SDAAPcv <- function (x, ...) UseMethod("SDAAPcv")
 
-SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxits, tol, feat, quiet){
+SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxits, tol, feat, quiet, initTheta, bt=FALSE, L, eta){
   #
   # HERE WE NEED A DESCRIPTION
   # Use Roxygen2 to create the desired documentation, internal function
@@ -33,7 +33,7 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
   Y <- Y[prm,]
 
   # Sort lambdas in descending order
-  lams <- lams[order(lams,decreasing = TRUE)]
+  lams <- lams[order(lams,decreasing = FALSE)]
 
   ###
   # Initialization of cross-validation indices
@@ -68,6 +68,11 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
     Xv <- X[vinds,]
     Yv <- Y[vinds,]
 
+    # Normalize
+    Xt_norm <- accSDA::normalize(Xt)
+    Xt <- Xt_norm$Xc # Use the centered and scaled data
+    Xv <- accSDA::normalizetest(Xv,Xt_norm)
+
     # Get dimensions of training matrices
     nt <- dim(Xt)[1]
     p  <- dim(Xt)[2]
@@ -86,19 +91,29 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
     ),
       class = "Amat"
     )
-
     # Check if Omega is diagonal
     if(norm(diag(diag(Om))-Om, type = "F") < 1e-15){
+      if(dim(Om)[1] != p){
+        warning("Columns dropped in normalization to a total of p, setting Om to diag(p)")
+        Om <- diag(p)
+      }
       A$flag <- 1
       A$gom <- gam*diag(Om)
       A$X <- Xt
       A$n <- nt
+      A$A <- 2*(crossprod(Xt)/nt + gam*Om)
+      #A$A <- 2*(crossprod(Xt) + gam*Om)
       alpha <- 1/(2*(norm(Xt, type="1")*norm(Xt, type="I")/nt + norm(diag(A$gom), type="I")))
+      #alpha <- 1/(2*(norm(Xt, type="1")*norm(Xt, type="I") + norm(diag(A$gom), type="I")))
     }else{
       A$flag <- 0
-      A$A <- 2*(t(Xt)%*%Xt/nt + gam*Om)
+      A$A <- 2*(crossprod(Xt)/nt + gam*Om)
+      #A$A <- 2*(crossprod(Xt) + gam*Om)
       alpha <- 1/(norm(A$A, type="F"))
     }
+    L <- 1/alpha
+    L <- norm(diag(diag(Om*gam)),'I')+norm(Xt,'F')^2
+    origL <- L
     D <- (1/n)*(t(Yt)%*%Yt)
     R <- chol(D)
 
@@ -110,20 +125,20 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
       print(paste("Fold number:",f))
       print("-------------------------------------------")
     }
-
+    B <- array(0,c(p,q,nlam))
     ###
     # Loop through the validation parameters
     ###
     for(ll in 1:nlam){
       # Initialize B and Q
       Q <- matrix(1,K,q)
-      B <- matrix(0,p,q)
 
       #-------------------------------------------------
       # Call Alternating Direction Method to solve SDA
       #-------------------------------------------------
       # For j=1,2,...,q compute the SDA pair (theta_j, beta_j)
       for(j in 1:q){
+        L <- origL
         # Initialization
 
         # Compute Qj (K by j, first j-1 scoring vectors, all-ones last col)
@@ -135,31 +150,60 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
         }
 
         # Initialize theta
-        theta <- Mj(matrix(stats::runif(K),nrow=K,ncol=1))
-        theta <- theta/as.numeric(sqrt(t(theta)%*%D%*%theta))
+        theta <- matrix(stats::runif(K),nrow=K,ncol=1)
+        theta <- Mj(theta)
+        if(j == 1 & !missing(initTheta)){
+          theta=initTheta
+        }
+        theta <- theta/as.numeric(sqrt(crossprod(theta,D%*%theta)))
 
         # Initialize beta
-        beta <- matrix(0,p,1)
+        if(ll==1){
+          if(norm(diag(diag(Om))-Om, type = "F") < 1e-15){
+            # Extract reciprocal of diagonal of Omega
+            ominv <- 1/diag(Om)
+
+            # Compute rhs of f minimizer system
+            rhs0 <- crossprod(Xt, (Yt%*%(theta/nt)))
+            rhs = Xt%*%((ominv/nt)*rhs0)
+
+            # Partial solution
+            tmp_partial = solve(diag(nt)+Xt%*%((ominv/(gam*nt))*t(Xt)),rhs)
+
+            # Finish solving for beta using SMW
+            beta = (ominv/gam)*rhs0 - 1/gam^2*ominv*(t(Xt)%*%tmp_partial)
+          }else{
+            beta <- matrix(0,p,1)
+          }
+        }else{
+          beta <- matrix(B[,j,ll-1],p,1)
+        }
 
         ###
         # Alternating direction method to update (theta,beta)
         ###
         for(its in 1:maxits){
           # Compute coefficient vector for elastic net step
-          d <- 2*t(Xt)%*%(Yt%*%(theta/nt))
+          d <- 2*crossprod(Xt,Yt%*%(theta/nt))
 
           # Update beta using proximal gradient step
           b_old <- beta
-          beta <- APG_EN2(A, d, beta, lams[ll], alpha, PGsteps, PGtol)
-          beta <- beta$x
+          if(bt == FALSE){
+            betaOb <- APG_EN2(A, d, beta, lams[ll], alpha, PGsteps, PGtol)
+            beta <- betaOb$x
+          }else{
+            betaOb <- APG_EN2bt(A, Xt, Om, gam, d, beta, lams[ll], L, eta, PGsteps, PGtol)
+            #L <- betaOb$L
+            beta <- betaOb$x
+          }
           # Update theta using projected solution
           if(norm(beta, type = "2") > 1e-12){
-            b <- t(Yt)%*%(Xt%*%beta)
-            y <- solve(t(R),b)
-            z <- solve(R,y)
+            b <- crossprod(Yt,Xt%*%beta)
+            y <- forwardsolve(t(R),b)
+            z <- backsolve(R,y)
             tt <- Mj(z)
             t_old <- theta
-            theta <- tt/as.numeric(sqrt(t(tt)%*%D%*%tt))
+            theta <- tt/sqrt(as.numeric(crossprod(tt, D)%*%tt))
 
             # Progress
             db <- norm(beta-b_old)/norm(beta, type="2")
@@ -180,9 +224,15 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
             break
           }
         }
+        # Make the first argument be positive, this is to make the results
+        # more reproducible and consistent.
+        if(theta[1] < 0){
+          theta <- (-1)*theta
+          beta <- (-1)*beta
+        }
         # Update Q and B
         Q[,j] <- theta
-        B[,j] <- beta
+        B[,j,ll] <- beta
       }
 
       #------------------------------------------------------------
@@ -190,9 +240,9 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
       #------------------------------------------------------------
 
       # Project validation data
-      PXtest <- Xv%*%B
+      PXtest <- Xv%*%B[,,ll]
       # Project centroids
-      PC <- C%*%B
+      PC <- C%*%B[,,ll]
 
       # Compute distances to the centroid for each projected test observation
       dists <- matrix(0,nv,K)
@@ -219,18 +269,20 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
       # Validation scores
       ###
       # if fraction nonzero features less than feat.
-      if( 1 <= sum(B != 0) & sum(B != 0) <= q*p*feat){
+      B_loc <- matrix(B[,,ll],p,q)
+      sum_B_loc_nnz <- sum(B_loc != 0)
+      if( 1 <= sum_B_loc_nnz & sum_B_loc_nnz <= q*p*feat){
         # Use misclassification rate as validation score.
         scores[f,ll] <- mc[f,ll]
-      } else if(sum(B != 0) > q*p*feat){
+      } else if(sum_B_loc_nnz > q*p*feat){
         # Solution is not sparse enough, use most sparse as measure of quality instead.
-        scores[f,ll] <- sum(B != 0)
+        scores[f,ll] <- sum_B_loc_nnz
       }
 
       # Display iteration stats
       if(!quiet){
         print(paste("f:", f, "| ll:", ll, "| lam:", lams[ll], "| feat:",
-                    sum(B != 0)/(q*p), "| mc:", mc[f,ll], "| score:", scores[f,ll]))
+                    sum_B_loc_nnz/(q*p), "| mc:", mc[f,ll], "| score:", scores[f,ll]))
       }
     } # End of for ll in 1:nlam
     #--------------------------------------------
@@ -271,8 +323,15 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
   Xt <- X[1:(n-pad),]
   Yt <- Y[1:(n-pad),]
 
+  # Normalize
+  Xt_norm <- accSDA::normalize(Xt)
+  Xt <- Xt_norm$Xc # Use the centered and scaled data
+  if(dim(Om)[1] != dim(Xt)[2]){
+    warning("Columns dropped in normalization to a total of p, setting Om to diag(p)")
+    Om <- diag(dim(Xt)[2])
+  }
   # Get best Q and B on full training data
-  resBest <- SDAAP(Xt, Yt, Om, gam, lams[lbest], q, PGsteps, PGtol, maxits, tol)
+  resBest <- SDAAP(Xt, Yt, Om, gam, lams[lbest], q, PGsteps, PGtol, maxits, tol, bt=bt)
 
   # Create an object of class SDAPcv to return, might add more to it later
   retOb <- structure(
@@ -280,7 +339,8 @@ SDAAPcv.default <- function(X, Y, folds, Om, gam, lams, q, PGsteps, PGtol, maxit
          B = resBest$B,
          Q = resBest$Q,
          lbest = lbest,
-         lambest = lambest),
+         lambest = lambest,
+         scores = scores),
     class = "SDAAPcv")
 
   return(retOb)

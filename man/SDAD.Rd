@@ -7,7 +7,21 @@
 \usage{
 SDAD(x, ...)
 
-\method{SDAD}{default}(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, tol)
+\method{SDAD}{default}(
+  Xt,
+  Yt,
+  Om,
+  gam,
+  lam,
+  mu,
+  q,
+  PGsteps,
+  PGtol,
+  maxits,
+  tol,
+  selector = rep(1, dim(Xt)[2]),
+  initTheta
+)
 }
 \arguments{
 \item{Xt}{n by p data matrix, (not a data frame, but a matrix)}
@@ -34,6 +48,12 @@ only one element is 1 and the rest is 0.}
 \item{maxits}{Number of iterations to run}
 
 \item{tol}{Stopping tolerance for proximal gradient algorithm.}
+
+\item{selector}{Vector to choose which parameters in the discriminant vector will be used to calculate the
+regularization terms. The size of the vector must be *p* the number of predictors. The
+default value is a vector of all ones. This is currently only used for ordinal classification.}
+
+\item{initTheta}{Initial first theta, default value is a vector of ones.}
 }
 \value{
 \code{SDAD} returns an object of \code{\link{class}} "\code{SDAD}" including a list
@@ -42,6 +62,8 @@ with the following named components: (More will be added later to handle the pre
   \item{\code{call}}{The matched call.}
   \item{\code{B}}{p by q matrix of discriminant vectors.}
   \item{\code{Q}}{K by q matrix of scoring vectors.}
+  \item{\code{subits}}{Total number of iterations in proximal gradient subroutine.}
+  \item{\code{totalits}}{Number coordinate descent iterations for all discriminant vectors}
 }
 
 \code{NULL}

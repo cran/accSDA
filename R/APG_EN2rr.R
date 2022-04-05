@@ -1,10 +1,11 @@
 #' Accelerated Proximal Gradient on l1 regularized quadratic program
 #'
 #' Applies accelerated proximal gradient algorithm to the l1-regularized quadratic program
+#' (with rank reduced Omega inside A)
 #' \deqn{f(\mathbf{x}) + g(\mathbf{x}) = \frac{1}{2}\mathbf{x}^TA\mathbf{x} - d^T\mathbf{x} + \lambda |\mathbf{x}|_1}{f(x) + g(x) = 0.5*x^T*A*x - d^T*x + lambda*|x|_l1}
 #'
-#' @param A p by p positive definite coefficient matrix
-#' \deqn{A = (\gamma Om + X^T X/n)}{A = (gamma Om + X^T X/n)}.
+#' @param A Object containing everythign needed for calculating A,
+#'        X and Omega are factored.
 #' @param d nx1 dimensional column vector.
 #' @param lam Regularization parameter for l1 penalty, must be greater than zero.
 #' @param alpha Step length.
@@ -26,7 +27,7 @@
 #' This function is used by other functions and should only be called explicitly for
 #' debugging purposes.
 #' @keywords internal
-APG_EN2 <- function(A, d, x0, lam, alpha,  maxits, tol, selector= rep(1,dim(x0)[1])){
+APG_EN2rr <- function(A, d, x0, lam, alpha,  maxits, tol, selector= rep(1,dim(x0)[1])){
   ###
   # Initialization
   ###
@@ -42,21 +43,10 @@ APG_EN2 <- function(A, d, x0, lam, alpha,  maxits, tol, selector= rep(1,dim(x0)[
   told <- 1
 
   # Objective function and gradient
-  if(A$flag == 1){
-    #f <- function(x){
-    #  as.numeric(t(x)%*%(matrix(A$gom,length(A$gom),1)*x) + (1/A$n)*norm(A$X%*%x)^2 + t(d)%*%x)
-    #}
-    df <- function(x){
-      2*(matrix(A$gom,length(A$gom),1)*x + crossprod(A$X,A$X%*%(x/A$n))) - d
-    }
-  }else{
-    #f <- function(x){
-    #  as.numeric(0.5*t(x)%*%A$A%*%x + t(d)%*%x)
-    #}
-    df <- function(x){
-      A$A%*%x - d
-    }
+  df <- function(x){
+    2*(crossprod(A$X,A$X%*%x)+A$gom%*%t(A$gom)%*%x) - d
   }
+
 
   #-------------------------------------------------------------
   # Outer loop: Repeat until convergence or max # of iterations

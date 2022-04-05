@@ -1,19 +1,23 @@
-#' Accelerated Proximal Gradient on l1 regularized quadratic program
+#' Accelerated Proximal Gradient (with backtracking) on l1 regularized quadratic program
 #'
-#' Applies accelerated proximal gradient algorithm to the l1-regularized quadratic program
+#' Applies accelerated proximal gradient algorithm (with backtracking) to the l1-regularized quadratic program
 #' \deqn{f(\mathbf{x}) + g(\mathbf{x}) = \frac{1}{2}\mathbf{x}^TA\mathbf{x} - d^T\mathbf{x} + \lambda |\mathbf{x}|_1}{f(x) + g(x) = 0.5*x^T*A*x - d^T*x + lambda*|x|_l1}
 #'
 #' @param A p by p positive definite coefficient matrix
 #' \deqn{A = (\gamma Om + X^T X/n)}{A = (gamma Om + X^T X/n)}.
+#' @param Xt Same as X above, we need it to make calculations faster.
+#' @param Om Same reason as for the above parameter.
+#' @param gamma l2 regularizing parameter.
 #' @param d nx1 dimensional column vector.
 #' @param lam Regularization parameter for l1 penalty, must be greater than zero.
-#' @param alpha Step length.
+#' @param L Initial vlaue of the backtracking Lipshitz constant.
+#' @param eta Backtracking scaling parameter.
 #' @param maxits Number of iterations to run
 #' @param tol Stopping tolerance for proximal gradient algorithm.
 #' @param selector Vector to choose which parameters in the discriminant vector will be used to calculate the
 #'                 regularization terms. The size of the vector must be *p* the number of predictors. The
 #'                 default value is a vector of all ones. This is currently only used for ordinal classification.
-#' @return \code{APG_EN2} returns an object of \code{\link{class}} "\code{APG_EN2}" including a list
+#' @return \code{APG_EN2bt} returns an object of \code{\link{class}} "\code{APG_EN2bt}" including a list
 #' with the following named components
 #'
 #' \describe{
@@ -26,20 +30,28 @@
 #' This function is used by other functions and should only be called explicitly for
 #' debugging purposes.
 #' @keywords internal
-APG_EN2 <- function(A, d, x0, lam, alpha,  maxits, tol, selector= rep(1,dim(x0)[1])){
+APG_EN2bt <- function(A, Xt, Om, gamma, d, x0, lam, L, eta,  maxits, tol, selector = rep(1,dim(x0)[1])){
+  ifDiag <- FALSE
+  if(norm(diag(diag(Om))-Om, type = "F") < 1e-15){
+    ifDiag <- TRUE
+  }else{
+    # Factorize Omega
+    R <- chol(gamma*Om,pivot=TRUE)
+  }
+  origL <- L
   ###
   # Initialization
   ###
 
   x <- x0
-  xold <- x
+  y <- x
 
   # Get number of components of x
   p <- dim(x0)[1]
 
   # initial momentum coefficient
   t <- 1
-  told <- 1
+  #told <- 1
 
   # Objective function and gradient
   if(A$flag == 1){
@@ -47,6 +59,7 @@ APG_EN2 <- function(A, d, x0, lam, alpha,  maxits, tol, selector= rep(1,dim(x0)[
     #  as.numeric(t(x)%*%(matrix(A$gom,length(A$gom),1)*x) + (1/A$n)*norm(A$X%*%x)^2 + t(d)%*%x)
     #}
     df <- function(x){
+      #2*(matrix(A$gom,length(A$gom),1)*x + crossprod(A$X,A$X%*%(x/A$n))) - d
       2*(matrix(A$gom,length(A$gom),1)*x + crossprod(A$X,A$X%*%(x/A$n))) - d
     }
   }else{
@@ -57,7 +70,8 @@ APG_EN2 <- function(A, d, x0, lam, alpha,  maxits, tol, selector= rep(1,dim(x0)[
       A$A%*%x - d
     }
   }
-
+  oneMat <- matrix(1,p,1)
+  zeroMat <- matrix(0,p,1)
   #-------------------------------------------------------------
   # Outer loop: Repeat until convergence or max # of iterations
   #-------------------------------------------------------------
@@ -93,28 +107,56 @@ APG_EN2 <- function(A, d, x0, lam, alpha,  maxits, tol, selector= rep(1,dim(x0)[
       break
     } else{
       ###
-      # Update x APG iteration
+      # Update gradient via backtracking
       ###
-      # Compute extrapolation factor
+      #L <- origL
+      alpha <- 1/L # step length
+      dfy <- df(y)
+      pLyy <- sign(y-alpha*dfy)*pmax(abs(y-alpha*dfy) - lam*alpha*oneMat,zeroMat)
+      pLy <- selector*pLyy + abs(selector-1)*(y-alpha*dfy)
+
+      pTilde <- (pLy-y)
+      if(ifDiag == TRUE){
+        #QminusF = 1/2*L*norm(dy,2)^2 - 1/A.n*norm(A.X*dy)^2 - dy'*((A.gom).*dy);
+        QminusF <- as.numeric((0.5)*L*norm(pTilde, type = "2")^2 - (1/A$n)*norm(A$X%*%pTilde, type="2")^2 - sum((pTilde)*(A$gom*pTilde)))
+      }else{
+        #QminusF = 1/2*(L*norm(dy, 2)^2 - dy'*A.A*dy);
+        QminusF <- as.numeric((1/2)*(L*norm(pTilde, type="2")^2 - t(pTilde)%*%A$A%*%pTilde))
+      }
+
+      #QminusF <- as.numeric((1/2)*t(pLy-y)%*%(L*diag(p)-A$A)%*%(pLy-y))
+      while(QminusF < -tol){
+        L <- eta*L
+        alpha <- 1/L # step length
+        pLyy <- sign(y-alpha*dfy)*pmax(abs(y-alpha*dfy) - lam*alpha*oneMat,zeroMat)
+        pLy <- selector*pLyy + abs(selector-1)*(y-alpha*dfy)
+        pTilde <- (pLy-y)
+        if(ifDiag == TRUE){
+          QminusF <- as.numeric((0.5)*L*norm(pTilde, type = "2")^2 - (1/A$n)*norm(A$Xt%*%pTilde, type="2")^2 - sum((pTilde)*(A$gom*pTilde)))
+        }else{
+          QminusF <- as.numeric((1/2)*(L*norm(pTilde, type="2")^2 - t(pTilde)%*%A$A%*%pTilde))
+        }
+
+        #QminusF <- as.numeric((1/2)*t(pLy-y)%*%(L*diag(p)-A$A)%*%(pLy-y))
+      }
+
+      # Update based on backtracked APG solution
+      xold <- x
+      x <- pLy
+
+      # Extrapolation factor
       told <- t
       t <- (1 + sqrt(1+4*told^2))/2
 
       # Extrapolate using last two iterates
       y <- x+(told-1)/t*(x-xold)
-
-      # Compute gradient at y
-      dfy <- df(y)
-
-      # Take proximal gradient step from y
-      xold <- x
-      xx <- sign(y-alpha*dfy)*pmax(abs(y-alpha*dfy) - lam*alpha*matrix(1,p,1),matrix(0,p,1))
-      x <- selector*xx + abs(selector-1)*(y-alpha*dfy)
     }
   }
   retOb <- structure(
     list(call = match.call(),
          x = x,
-         k = k),
-    class = "APG_EN2")
+         k = k,
+         L = L),
+    class = "APG_EN2bt")
   return(retOb)
 }

@@ -1,6 +1,6 @@
 Package: accSDA
-Version: 1.0.0
-Date: 2017-08-22
+Version: 1.1.1
+Date: 2022-04-05
 Authors@R: c(
      person("Gudmundur", "Einarsson", , "gumeo140688@gmail.com", role = c("aut", "cre", "trl")),
      person("Line", "Clemmensen", , "lkhc@dtu.dk", role = c("aut","ths")),
@@ -8,9 +8,8 @@ Authors@R: c(
      person("Summer", "Atkins", , "sratkins@crimson.ua.edu", role = c("aut"))
      )
 Title: Accelerated Sparse Discriminant Analysis
-Imports: MASS (>= 7.3.45), rARPACK (>= 0.10.0), sparseLDA (>= 0.1.7),
-        ggplot2 (>= 2.1.0), ggthemes (>= 3.2.0), grid (>= 3.2.2),
-        gridExtra (>= 2.2.1)
+Imports: MASS (>= 7.3.45), ggplot2 (>= 2.1.0), ggthemes (>= 3.2.0),
+        grid (>= 3.2.2), gridExtra (>= 2.2.1)
 Depends: R (>= 3.2)
 Description: Implementation of sparse linear discriminant analysis, which is a supervised
     classification method for multiple classes. Various novel optimization approaches to
@@ -23,14 +22,13 @@ Description: Implementation of sparse linear discriminant analysis, which is a s
 License: GPL (>= 2)
 URL: https://github.com/gumeo/accSDA/wiki
 BugReports: https://github.com/gumeo/accSDA/issues
-LazyData: TRUE
-RoxygenNote: 6.0.1
+RoxygenNote: 7.1.1
 NeedsCompilation: no
-Packaged: 2017-08-24 11:00:19 UTC; guei
+Packaged: 2022-04-05 22:55:28 UTC; gumeo
 Author: Gudmundur Einarsson [aut, cre, trl],
   Line Clemmensen [aut, ths],
   Brendan Ames [aut],
   Summer Atkins [aut]
 Maintainer: Gudmundur Einarsson <gumeo140688@gmail.com>
 Repository: CRAN
-Date/Publication: 2017-08-24 11:53:10 UTC
+Date/Publication: 2022-04-05 23:12:32 UTC

@@ -26,6 +26,8 @@
 #'       \item{\code{SDAAP}}{Accelerated proximal gradient algorithm.}
 #'       \item{\code{SDAD}}{Alternating directions method of multipliers algorithm.}
 #'     }
+#'     Note that further parameters are passed to the function in the argument \code{control},
+#'     which is a list with named components.
 #' @param ... Additional arguments for \code{\link[MASS]{lda}} function in package MASS.
 #'
 #' @details The control list contains the following entries to further tune the
@@ -51,6 +53,16 @@
 #'            if CV is not specified. Default value is 0.15.}
 #'            \item{\code{quiet}}{Set to \code{FALSE} if status updates are supposed to be printed to the R console.
 #'            Default value is \code{TRUE}. Note that this triggers a lot of printing to the console.}
+#'            \item{\code{ordinal}}{Set to \code{TRUE} if the labels are ordinal. Only available for methods
+#'            \code{SDAAP} and \code{SDAD}.}
+#'            \item{\code{initTheta}}{Option to set the initial theta vector, by default it is a vector of all ones
+#'            for the first theta.}
+#'            \item{\code{bt}}{Logical indicating whether backtracking should be used, only applies to
+#'            the Proximal Gradient based methods. By default, backtracking is not used.}
+#'            \item{\code{L}}{Initial estimate for Lipshitz constant used for backtracking. Default value is 0.25.}
+#'            \item{\code{eta}}{Scalar for Lipshitz constant. Default value is 1.25.}
+#'            \item{\code{rankRed}}{Boolean indicating whether Om is factorized, such that R^t*R=Om,
+#'            currently only applicable for accelerated proximal gradient.}
 #'          }
 #'
 #' @return \code{ASDA} returns an object of \code{\link{class}} "\code{ASDA}" including a list
@@ -87,8 +99,8 @@
 #'
 #'     # Define parameters for Alternating Direction Method of Multipliers (SDAD)
 #'     Om <- diag(4)+0.1*matrix(1,4,4) #elNet coef mat
-#'     gam <- 0.01
-#'     lam <- 0.01
+#'     gam <- 0.0001
+#'     lam <- 0.0001
 #'     method <- "SDAD"
 #'     q <- 2
 #'     control <- list(PGsteps = 100,
@@ -188,30 +200,6 @@ ASDA <- function (Xt, ...) UseMethod("ASDA")
 #' @rdname ASDA
 #' @method ASDA default
 ASDA.default <- function(Xt, Yt, Om = diag(p), gam = 1e-3, lam = 1e-6, q = K-1, method = "SDAAP", control=list(), ...){
-
-  # Similar to the use of the optim function in stats from base
-  ## Defaults for the control variables:
-  con <- list(PGsteps = 1000,
-              PGtol = 1e-5,
-              maxits = 250,
-              tol = 1e-3,
-              mu = NA,
-              CV = FALSE,
-              folds = 5,
-              feat = 0.15,
-              quiet = TRUE)
-  nmsC <- names(con)
-  if(method == "SDAD"){
-    # Set special defaults for SDAD
-    con$mu <- 1
-    PGtol = c(1e-5,1e-5)
-  }
-  # Overwrite with user supplied input!
-  con[(namc <- names(control))] <- control
-  # Warn user of input that cannot be used!
-  if(length(noNms <- namc[!namc %in% nmsC]))
-    warning("unknown names in control: ", paste(noNms,collapse=", "))
-
   # This is straight from nnet:::formula
   # This is used later to handle Yt as a factor
   class.ind <- function(cl) {
@@ -220,14 +208,8 @@ ASDA.default <- function(Xt, Yt, Om = diag(p), gam = 1e-3, lam = 1e-6, q = K-1, 
     dimnames(x) <- list(names(cl), levels(cl))
     x
   }
-
-  # Go through the inputs to verify that they are correct.
-  if(missing(Xt)){
-    stop("You must specify a data matrix Xt to use this function!")
-  }
-  predNames <- colnames(Xt)
   if(missing(Yt)){
-    stop("You must specify an indicator matrix Yt to use this function!")
+    stop("You must specify labels/classes Yt to use this function!")
   }
   if(is.factor(Yt))
   {
@@ -242,13 +224,69 @@ ASDA.default <- function(Xt, Yt, Om = diag(p), gam = 1e-3, lam = 1e-6, q = K-1, 
     }
     factorY <- factor(colnames(Yt)[apply(Yt, 1, which.max)])
   }
-  # Define K and p for default inputs
-  p <- dim(Xt)[2]
+  # Define K for default inputs
   K <- length(classes)
+  p <- dim(Xt)[2]
+
+  # Similar to the use of the optim function in stats from base
+  ## Defaults for the control variables:
+  con <- list(PGsteps = 1000,
+              PGtol = 1e-5,
+              maxits = 250,
+              tol = 1e-3,
+              mu = NA,
+              CV = FALSE,
+              folds = 5,
+              feat = 0.15,
+              quiet = TRUE,
+              ordinal = FALSE,
+              initTheta = matrix(1:K,nrow=K,ncol=1),
+              bt = FALSE,
+              L = 0.25,
+              eta = 2,
+              rankRed=FALSE)
+  nmsC <- names(con)
+  if(method == "SDAD"){
+    # Set special defaults for SDAD
+    con$mu <- 1
+    con$PGtol <- c(1e-5,1e-5)
+  }
+  # Overwrite with user supplied input!
+  con[(namc <- names(control))] <- control
+  # Warn user of input that cannot be used!
+  if(length(noNms <- namc[!namc %in% nmsC]))
+    warning("unknown names in control: ", paste(noNms,collapse=", "))
+
+  if(nrow(con$initTheta) != K | is.matrix(con$initTheta) == FALSE){
+    stop('The initTheta parameter supplied must be a matrix with one
+         column and the number of rows equal to the number fo classes.')
+  }
+
+  if(con$eta < 0){
+    stop('Backtracking multiplier must be positive!')
+  }
+
+  # Make sure that the method is acelerated proximal gradient if we have ordinal data
+  # Also inform that the CV version has not yet been implemented
+  if(con$ordinal == TRUE){
+    if(method == "SDAP"){
+      stop('Ordinal SDA is only implemented for APG and ADMM')
+    }
+    if(con$CV == TRUE){
+      stop('A cross-validation functionality has not been implemented for Ordinal SDA!')
+    }
+  }
+
+  # Go through the inputs to verify that they are correct.
+  if(missing(Xt)){
+    stop("You must specify a data matrix Xt to use this function!")
+  }
+  predNames <- colnames(Xt)
+
   if(missing(Om)){
     print("Om not specified, using default diag(p).")
   }
-  if(dim(Om)[1] != dim(Xt)[2]){
+  if(dim(Om)[1] != dim(Xt)[2] & con$rankRed == FALSE){
     stop("Om must be a p by p matrix, where p is the number of variables/columns in Xt.")
   }
   if(missing(gam)){
@@ -308,7 +346,7 @@ ASDA.default <- function(Xt, Yt, Om = diag(p), gam = 1e-3, lam = 1e-6, q = K-1, 
     stop("mu must be positive")
   }
   if(method == "SDAD" & length(PGtol)!=2){
-    stop("When using SDAD you need to specify PGtol as a vector with
+    stop("When using SDAD you can specify PGtol as a vector with
          two components, absolute and relative tolerance. E.g. PGtol <- c(1e-5,1e-5)")
   }
   CV <- con$CV
@@ -344,19 +382,72 @@ ASDA.default <- function(Xt, Yt, Om = diag(p), gam = 1e-3, lam = 1e-6, q = K-1, 
   ###
   if(!CV){
     if(method == "SDAP"){
-      res <- SDAP(Xt, Yt, Om, gam, lam, q, PGsteps, PGtol, maxits, tol)
+      if(con$bt == FALSE){
+        res <- SDAP(Xt=Xt, Yt=Yt, Om=Om, gam=gam, lam=lam, q=q,
+                    PGsteps=PGsteps, PGtol=PGtol, maxits=maxits,
+                    tol=tol, initTheta=con$initTheta)
+      }else{
+        res <- SDAP(Xt=Xt, Yt=Yt, Om=Om, gam=gam, lam=lam, q=q,
+                    PGsteps=PGsteps, PGtol=PGtol, maxits=maxits,
+                    tol=tol, initTheta=con$initTheta, bt=con$bt,
+                    L=con$L, eta=con$eta)
+      }
     } else if(method == "SDAAP"){
-      res <- SDAAP(Xt, Yt, Om, gam, lam, q, PGsteps, PGtol, maxits, tol)
+      selector <- rep(1,dim(Xt)[2])
+      if(con$ordinal == TRUE){
+        selector[(dim(Xt)[2]-K+2):dim(Xt)[2]] <- rep(0,length((dim(Xt)[2]-K+2):dim(Xt)[2]))
+      }
+      if(con$bt==FALSE){
+        res <- SDAAP(Xt=Xt, Yt=Yt, Om=Om, gam=gam, lam=lam, q=q, PGsteps=PGsteps,
+                     PGtol=PGtol, maxits=maxits, tol=tol, selector=selector,
+                     initTheta=con$initTheta, rankRed=con$rankRed)
+      }else{
+        res <- SDAAP(Xt=Xt, Yt=Yt, Om=Om, gam=gam, lam=lam, q=q, PGsteps=PGsteps,
+                     PGtol=PGtol, maxits=maxits, tol=tol, selector=selector,
+                     initTheta=con$initTheta, bt=con$bt,
+                     L=con$L, eta=con$eta)
+      }
     } else{ # method is SDAD, input has been checked
-      res <- SDAD(Xt, Yt, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, tol)
+      selector <- rep(1,dim(Xt)[2])
+      if(con$ordinal == TRUE){
+        selector[(dim(Xt)[2]-K+2):dim(Xt)[2]] <- rep(0,length((dim(Xt)[2]-K+2):dim(Xt)[2]))
+      }
+      res <- SDAD(Xt=Xt, Yt=Yt, Om=Om, gam=gam, lam=lam, mu=mu, q=q, PGsteps=PGsteps,
+                  PGtol=PGtol, maxits=maxits, tol=tol, selector=selector,
+                  initTheta=con$initTheta)
     }
   } else{
     if(method == "SDAP"){
-      res <- SDAPcv(Xt, Yt, folds, Om, gam, lam, q, PGsteps, PGtol, maxits, tol, feat, quiet)
+      if(con$bt == FALSE){
+        res <- SDAPcv(X=Xt, Y=Yt, folds=folds, Om=Om, gam=gam,
+                      lam=lam, q=q, PGsteps=PGsteps, PGtol=PGtol,
+                      maxits=maxits, tol=tol, feat=feat,
+                      quiet=quiet, initTheta=con$initTheta)
+      }else{
+        res <- SDAPcv(X=Xt, Y=Yt, folds=folds, Om=Om, gam=gam,
+                      lam=lam, q=q, PGsteps=PGsteps, PGtol=PGtol,
+                      maxits=maxits, tol=tol, feat=feat,
+                      quiet=quiet, initTheta=con$initTheta, bt=con$bt,
+                      L=con$L, eta=con$eta)
+      }
     } else if(method == "SDAAP"){
-      res <- SDAAPcv(Xt, Yt, folds, Om, gam, lam, q, PGsteps, PGtol, maxits, tol, feat, quiet)
+      if(con$bt == FALSE){
+        res <- SDAAPcv(X=Xt, Y=Yt, folds=folds, Om=Om, gam=gam,
+                       lam=lam, q=q, PGsteps=PGsteps, PGtol=PGtol,
+                       maxits=maxits, tol=tol, feat=feat,
+                       quiet=quiet, initTheta=con$initTheta)
+      }else{
+        res <- SDAAPcv(X=Xt, Y=Yt, folds=folds, Om=Om, gam=gam,
+                       lam=lam, q=q, PGsteps=PGsteps, PGtol=PGtol,
+                       maxits=maxits, tol=tol, feat=feat,
+                       quiet=quiet, initTheta=con$initTheta, bt=con$bt,
+                       L=con$L, eta=con$eta)
+      }
     } else{ # method is SDAD
-      res <- SDADcv(Xt, Yt, folds, Om, gam, lam, mu, q, PGsteps, PGtol, maxits, tol, feat, quiet)
+      res <- SDADcv(X=Xt, Y=Yt, folds=folds, Om=Om, gam=gam,
+                    lam=lam, mu=mu, q=q, PGsteps=PGsteps, PGtol=PGtol,
+                    maxits=maxits, tol=tol, feat=feat,
+                    quiet=quiet, initTheta=con$initTheta)
     }
   }
   ###
@@ -480,7 +571,7 @@ ASDA.matrix <- function(Xt, ...){
 predict.ASDA <- function(object, newdata = NULL, ...)
 {
   if(!is.matrix(newdata)) newdata <- as.matrix(newdata)
-  if(!is.null(object$varNames))
+  if(!is.null(object$varNames) & length(object$varNames) > 0)
   {
     newdata <- newdata[, object$varNames, drop = FALSE]
   } else {
