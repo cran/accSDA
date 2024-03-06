@@ -5,7 +5,7 @@
 \alias{SDAP.default}
 \title{Sparse Discriminant Analysis solved via Proximal Gradient}
 \usage{
-SDAP(x, ...)
+SDAP(Xt, ...)
 
 \method{SDAP}{default}(
   Xt,
@@ -21,7 +21,8 @@ SDAP(x, ...)
   initTheta,
   bt = FALSE,
   L,
-  eta
+  eta,
+  ...
 )
 }
 \arguments{

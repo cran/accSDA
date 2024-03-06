@@ -5,7 +5,7 @@
 \alias{SDAD.default}
 \title{Sparse Discriminant Analysis solved via ADMM}
 \usage{
-SDAD(x, ...)
+SDAD(Xt, ...)
 
 \method{SDAD}{default}(
   Xt,
@@ -20,7 +20,8 @@ SDAD(x, ...)
   maxits,
   tol,
   selector = rep(1, dim(Xt)[2]),
-  initTheta
+  initTheta,
+  ...
 )
 }
 \arguments{

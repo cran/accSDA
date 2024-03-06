@@ -5,7 +5,7 @@
 \alias{SDAAP.default}
 \title{Sparse Discriminant Analysis solved via Accelerated Proximal Gradient}
 \usage{
-SDAAP(x, ...)
+SDAAP(Xt, ...)
 
 \method{SDAAP}{default}(
   Xt,
@@ -23,7 +23,8 @@ SDAAP(x, ...)
   bt = FALSE,
   L,
   eta,
-  rankRed = FALSE
+  rankRed = FALSE,
+  ...
 )
 }
 \arguments{

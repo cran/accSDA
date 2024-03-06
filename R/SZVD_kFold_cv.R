@@ -63,13 +63,13 @@
 #' This function might require a wrapper similar to ASDA.
 #' @rdname SZVD_kFold_cv
 #' @export SZVD_kFold_cv
-SZVD_kFold_cv <- function(X, ...) UseMethod("SZVD_kFold_cv",X)
+SZVD_kFold_cv <- function(X, ...) UseMethod("SZVD_kFold_cv", X)
 
 #' @return \code{NULL}
-#'
+#' @export
 #' @rdname SZVD_kFold_cv
 #' @method SZVD_kFold_cv default
-SZVD_kFold_cv.default <- function(X, Y, folds, gams, beta, D, q, maxits, tol, ztol, feat, penalty, quiet){
+SZVD_kFold_cv.default <- function(X, Y, folds, gams, beta, D, q, maxits, tol, ztol, feat, penalty, quiet, ...){
 
   # Try to put everything in the style of the old function to make the code for experiments more convenient.
   # Also, let's choose the best parameter in the same way as for the other methods, meaning that we need

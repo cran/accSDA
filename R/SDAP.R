@@ -33,13 +33,14 @@
 #' }
 #' @seealso \code{SDAPcv}, \code{\link{SDAAP}} and \code{\link{SDAD}}
 #' @keywords internal
-SDAP <- function (x, ...) UseMethod("SDAP")
+SDAP <- function (Xt, ...) UseMethod("SDAP")
 
 #' @return \code{NULL}
 #'
 #' @rdname SDAP
 #' @method SDAP default
-SDAP.default <- function(Xt, Yt, Om, gam, lam, q, PGsteps, PGtol, maxits, tol, initTheta, bt = FALSE, L, eta){
+#' @keywords internal
+SDAP.default <- function(Xt, Yt, Om, gam, lam, q, PGsteps, PGtol, maxits, tol, initTheta, bt = FALSE, L, eta, ...){
 
   # Read training data size
   n <- dim(Xt)[1]

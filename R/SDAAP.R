@@ -38,14 +38,14 @@
 #' }
 #' @seealso \code{SDAAPcv}, \code{\link{SDAP}} and \code{\link{SDAD}}
 #' @keywords internal
-SDAAP <- function(x, ...) UseMethod("SDAAP")
+SDAAP <- function(Xt, ...) UseMethod("SDAAP")
 
 
 #' @return \code{NULL}
 #'
 #' @rdname SDAAP
 #' @method SDAAP default
-SDAAP.default <- function(Xt, Yt, Om, gam, lam, q, PGsteps, PGtol, maxits, tol, selector = rep(1,dim(Xt)[2]), initTheta, bt=FALSE, L, eta, rankRed = FALSE){
+SDAAP.default <- function(Xt, Yt, Om, gam, lam, q, PGsteps, PGtol, maxits, tol, selector = rep(1,dim(Xt)[2]), initTheta, bt=FALSE, L, eta, rankRed = FALSE, ...){
   # Get training data size
   nt <- dim(Xt)[1] # num. samples
   p <- dim(Xt)[2]  # num. features
